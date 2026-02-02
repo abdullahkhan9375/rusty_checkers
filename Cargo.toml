@@ -1,4 +1,0 @@
-[dependencies]
-hyper = { version = "0.14", features = ["server", "http1", "tcp"] }
-tokio = { version = "1", features = ["full"] }
-
