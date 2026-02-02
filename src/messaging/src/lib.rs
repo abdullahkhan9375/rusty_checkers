@@ -1,14 +1,30 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Message {
+    Hello { msg: String },
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub fn deserialise(frame: &[u8]) -> Result<Message, String> {
+    let s = match str::from_utf8(frame) {
+        Ok(s) => s,
+        Err(e) => return Err(e.to_string()),
+    };
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    let msg: Message = match serde_json::from_str(s) {
+        Ok(msg) => msg,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    Ok(msg)
 }
+
+pub fn serialise(msg: &Message) -> Result<Vec<u8>, String> {
+    let s = match serde_json::to_string(msg) {
+        Ok(s) => s,
+        Err(e) => return Err(e.to_string()),
+    };
+
+    Ok(s.into_bytes()) 
+}
+
