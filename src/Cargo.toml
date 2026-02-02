@@ -1,0 +1,9 @@
+[workspace]
+
+# List the folders that will contain your individual crates
+members = [
+    "server",
+    "client",
+    "messaging",
+    "plugins",
+]
