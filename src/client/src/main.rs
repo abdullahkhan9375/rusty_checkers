@@ -4,7 +4,7 @@ use futures_util::SinkExt;
 
 #[tokio::main]
 async fn main() {
-    let stream = match TcpStream::connect("127.0.0.1:9000").await {
+    let stream = match TcpStream::connect("127.0.0.1:10000").await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to connect: {e}");
