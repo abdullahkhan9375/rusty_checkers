@@ -29,9 +29,9 @@ impl Server {
         }
     }
 
-    pub fn login_user(&self, username: &str) -> bool {
+    pub fn login_user(&self, username: &str, tx: mpsc::Sender<ServerMessage>) -> bool {
         let mut lock = self.users.lock().unwrap();
-        matches!(lock.login_user(username), users::LoginResult::Success)
+        matches!(lock.login_user(username, tx), users::LoginResult::Success)
     }
 
     pub fn logout_user(&self, username: &str) -> bool {
@@ -39,31 +39,61 @@ impl Server {
         matches!(lock.logout_user(username), users::LogoutResult::Success)
     }
 
-    pub fn recv_msg(&self, msg: ClientMessage) {
+    pub async fn recv_msg(&self, username: &str, msg: ClientMessage) {
+        println!("Recived msg from {username}: {msg:?}");
         match msg {
-            ClientMessage::Ping => {
-                println!("Recv ping from client");
-            }
-
+            ClientMessage::HeartBeat => {}
             ClientMessage::LoginRequest { .. } => {
                 eprintln!("Unexpected LoginRequest message");
+            },
+            ClientMessage::SendChatMessage { recipient, message } => {
+                let tx = {
+                    let lock = self.users.lock().unwrap();
+                    lock.get_user_tx(&recipient)
+                };
+
+                if let Some(tx) = tx {
+                    let msg = ServerMessage::RecvChatMessage { from: username.to_string(), message };
+                    if let Err(e) = tx.send(msg).await {
+                        eprintln!("Failed to post received client message from {username}: {e}");
+                    }
+                } else {
+                    // TODO: Send error to user
+                    eprintln!("Unable to find user tx: {recipient}");
+                }
             },
         }
     }
 }
 
-pub async fn read_loop(svr: Arc<Server>, mut framed: ReadFramed) {
+async fn write_msg(framed: &mut WriteFramed, msg: &ServerMessage) -> Result<(), String> {
+    let serialized = match msg.serialise() {
+        Ok(s) => s,
+        Err(e) => return Err(format!("Failed to serialise message: {e}")),
+    };
+
+    if let Err(e) = framed.send(serialized.into()).await {
+        return Err(format!("Failed to send message: {e}"));
+    }
+
+    Ok(())
+}
+
+pub async fn read_loop(username: String, svr: Arc<Server>, mut framed: ReadFramed) {
     loop {
         let result = tokio::time::timeout(TIMEOUT, framed.next()).await;
         let bytes = match result {
             Ok(Some(Ok(b))) => b,
-            Ok(None) => break,
+            Ok(None) => {
+                eprintln!("No message received: {username}");
+                break;
+            }
             Ok(Some(Err(e))) => {
-                eprintln!("Read loop error: {e:?}");
+                eprintln!("Read loop error ({username}): {e:?}");
                 break;
             },
             Err(_elapsed) => {
-                println!("Timed out");
+                println!("Timed out: {username}");
                 break;
             }
         };
@@ -76,46 +106,34 @@ pub async fn read_loop(svr: Arc<Server>, mut framed: ReadFramed) {
             }
         };
 
-        println!("{msg:?}");
-        svr.recv_msg(msg);
+        svr.recv_msg(&username, msg).await;
     }
 }
 
-pub fn read_task(svr: Arc<Server>, framed: ReadFramed, cancellation_token: CancellationToken) -> JoinHandle<()> {
+pub fn read_task(username: String, svr: Arc<Server>, framed: ReadFramed, cancellation_token: CancellationToken) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {}
-            _ = read_loop(svr, framed) => {},
+            _ = read_loop(username, svr, framed) => {},
         }
     })
 }
 
-pub async fn write_loop(write_stream: OwnedWriteHalf, mut rx: mpsc::Receiver<ServerMessage>) {
+pub async fn write_loop(username: String, write_stream: OwnedWriteHalf, mut rx: mpsc::Receiver<ServerMessage>) {
     let mut framed = WriteFramed::new(write_stream, LengthDelimitedCodec::new());
     while let Some(msg) = rx.recv().await {
-        let serialized = match msg.serialise() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to serialise message: {e}");
-                std::process::exit(1);
-            },
-        };
-
-        match framed.send(serialized.clone().into()).await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to send login message: {e}");
-                std::process::exit(1);
-            },
+        println!("Sending message to {username}: {msg:?}");
+        if let Err(e) = write_msg(&mut framed, &msg).await {
+            eprintln!("{e}");
         }
     }
 }
 
-pub fn write_task(write_stream: OwnedWriteHalf, rx: mpsc::Receiver<ServerMessage>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+pub fn write_task(username: String, write_stream: OwnedWriteHalf, rx: mpsc::Receiver<ServerMessage>, cancellation_token: CancellationToken) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {}
-            _ = write_loop(write_stream, rx) => {},
+            _ = write_loop(username, write_stream, rx) => {},
         }
     })
 }
@@ -145,6 +163,7 @@ pub async fn run(addr: SocketAddr) {
         tokio::spawn(async move {
             let mut framed = ReadFramed::new(read_stream, LengthDelimitedCodec::new());
 
+            let (tx, rx) = mpsc::channel::<ServerMessage>(1024);
             let username = match framed.next().await {
                 Some(Ok(bytes)) => {
                     let msg = match ClientMessage::deserialise(bytes.as_ref()) {
@@ -157,12 +176,13 @@ pub async fn run(addr: SocketAddr) {
 
                     match msg {
                         ClientMessage::LoginRequest { username } => {
-                            if !svr.login_user(&username) {
+                            if !svr.login_user(&username, tx.clone()) {
                                 // TODO: Send reason to client
                                 eprintln!("Failed to login user {username}");
                                 return;
                             }
 
+                            println!("User {username} logged in");
                             username
                         }
                         _ => {
@@ -182,10 +202,9 @@ pub async fn run(addr: SocketAddr) {
                 }
             };
 
-            let (tx, rx) = mpsc::channel::<ServerMessage>(1024);
             let cancellation_token = CancellationToken::new();
-            let read_handle = read_task(svr.clone(), framed, cancellation_token.clone());
-            let write_handle = write_task(write_stream, rx, cancellation_token.clone());
+            let read_handle = read_task(username.clone(), svr.clone(), framed, cancellation_token.clone());
+            let write_handle = write_task(username.clone(), write_stream, rx, cancellation_token.clone());
 
             let mut set = tokio::task::JoinSet::new();
             set.spawn(read_handle);

@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 pub enum ServerMessage {
     LoginSuccess,
     LoginFailed { reason: String },
-    Ping,
+    RecvChatMessage { from: String, message: String },
 }
 
 pub fn deserialise<'de, T: Deserialize<'de>>(frame: &'de [u8]) -> Result<T, String> {
@@ -43,9 +43,10 @@ impl ServerMessage {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientMessage {
-    Ping,
+    HeartBeat,
 
     LoginRequest { username: String },
+    SendChatMessage { recipient: String, message: String },
 }
 
 impl ClientMessage {
