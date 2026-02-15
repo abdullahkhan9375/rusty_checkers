@@ -1,19 +1,22 @@
 use crate::users::{self, Users};
-use messaging::ClientMessage;
+use messaging::{ServerMessage, ClientMessage};
 use std::sync::Mutex;
 
-use tokio::net::{TcpStream, TcpListener};
+use tokio::net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpListener};
+use tokio::sync::mpsc;
 use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 use tokio::task::JoinHandle;
 
+use futures_util::{SinkExt, StreamExt};
+
 use std::net::SocketAddr;
 use std::sync::Arc;
-use futures_util::StreamExt;
 use std::time::Duration;
 
 const TIMEOUT: Duration = Duration::from_secs(30);
 
-type Framed = tokio_util::codec::Framed<TcpStream, LengthDelimitedCodec>;
+type ReadFramed = tokio_util::codec::Framed<OwnedReadHalf, LengthDelimitedCodec>;
+type WriteFramed = tokio_util::codec::Framed<OwnedWriteHalf, LengthDelimitedCodec>;
 
 pub struct Server {
     users: Mutex<Users>,
@@ -49,13 +52,13 @@ impl Server {
     }
 }
 
-pub async fn read_loop(svr: Arc<Server>, mut framed: Framed) {
+pub async fn read_loop(svr: Arc<Server>, mut framed: ReadFramed) {
     loop {
         let result = tokio::time::timeout(TIMEOUT, framed.next()).await;
         let bytes = match result {
             Ok(Some(Ok(b))) => b,
             Ok(None) => break,
-            Ok(Some(e)) => {
+            Ok(Some(Err(e))) => {
                 eprintln!("Read loop error: {e:?}");
                 break;
             },
@@ -78,11 +81,41 @@ pub async fn read_loop(svr: Arc<Server>, mut framed: Framed) {
     }
 }
 
-pub async fn read_task(svr: Arc<Server>, framed: Framed, cancellation_token: CancellationToken) -> JoinHandle<()> {
+pub fn read_task(svr: Arc<Server>, framed: ReadFramed, cancellation_token: CancellationToken) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {}
             _ = read_loop(svr, framed) => {},
+        }
+    })
+}
+
+pub async fn write_loop(write_stream: OwnedWriteHalf, mut rx: mpsc::Receiver<ServerMessage>) {
+    let mut framed = WriteFramed::new(write_stream, LengthDelimitedCodec::new());
+    while let Some(msg) = rx.recv().await {
+        let serialized = match msg.serialise() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to serialise message: {e}");
+                std::process::exit(1);
+            },
+        };
+
+        match framed.send(serialized.clone().into()).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to send login message: {e}");
+                std::process::exit(1);
+            },
+        }
+    }
+}
+
+pub fn write_task(write_stream: OwnedWriteHalf, rx: mpsc::Receiver<ServerMessage>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = cancellation_token.cancelled() => {}
+            _ = write_loop(write_stream, rx) => {},
         }
     })
 }
@@ -99,7 +132,7 @@ pub async fn run(addr: SocketAddr) {
     let svr = Arc::new(Server::new());
 
     loop {
-        let (socket, _addr) = match listener.accept().await {
+        let (stream, _addr) = match listener.accept().await {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("Failed to accept: {e}");
@@ -107,9 +140,10 @@ pub async fn run(addr: SocketAddr) {
             }
         };
 
+        let (read_stream, write_stream) = stream.into_split();
         let svr = svr.clone();
         tokio::spawn(async move {
-            let mut framed = Framed::new(socket, LengthDelimitedCodec::new());
+            let mut framed = ReadFramed::new(read_stream, LengthDelimitedCodec::new());
 
             let username = match framed.next().await {
                 Some(Ok(bytes)) => {
@@ -148,11 +182,16 @@ pub async fn run(addr: SocketAddr) {
                 }
             };
 
+            let (tx, rx) = mpsc::channel::<ServerMessage>(1024);
             let cancellation_token = CancellationToken::new();
-            let read_handle = read_task(svr.clone(), framed, cancellation_token.clone()).await;
+            let read_handle = read_task(svr.clone(), framed, cancellation_token.clone());
+            let write_handle = write_task(write_stream, rx, cancellation_token.clone());
 
             let mut set = tokio::task::JoinSet::new();
             set.spawn(read_handle);
+            set.spawn(write_handle);
+
+            let _ = tx.send(ServerMessage::LoginSuccess).await;
 
             set.join_next().await;
 

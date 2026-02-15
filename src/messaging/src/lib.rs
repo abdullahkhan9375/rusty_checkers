@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 pub enum ServerMessage {
     LoginSuccess,
     LoginFailed { reason: String },
+    Ping,
 }
 
 pub fn deserialise<'de, T: Deserialize<'de>>(frame: &'de [u8]) -> Result<T, String> {

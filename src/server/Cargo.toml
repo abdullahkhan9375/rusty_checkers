@@ -6,5 +6,5 @@ edition = "2024"
 [dependencies]
 tokio = { version = "*", features = ["full"] }
 tokio-util = { version = "*", features = ["codec"] }
-futures-util = "*"
+futures-util = { version = "*", features = ["sink"] }
 messaging = { path = "../messaging" }
