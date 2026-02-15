@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerMessage {
@@ -27,7 +27,7 @@ pub fn serialise<T: Serialize>(msg: &T) -> Result<Vec<u8>, String> {
         Err(e) => return Err(e.to_string()),
     };
 
-    Ok(s.into_bytes()) 
+    Ok(s.into_bytes())
 }
 
 impl ServerMessage {
@@ -39,7 +39,6 @@ impl ServerMessage {
         serialise(&self)
     }
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClientMessage {
@@ -58,4 +57,3 @@ impl ClientMessage {
         serialise(self)
     }
 }
-

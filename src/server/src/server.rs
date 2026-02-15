@@ -1,11 +1,14 @@
 use crate::users::{self, Users};
-use messaging::{ServerMessage, ClientMessage};
+use messaging::{ClientMessage, ServerMessage};
 use std::sync::Mutex;
 
-use tokio::net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpListener};
+use tokio::net::{
+    TcpListener,
+    tcp::{OwnedReadHalf, OwnedWriteHalf},
+};
 use tokio::sync::mpsc;
-use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 use tokio::task::JoinHandle;
+use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
 use futures_util::{SinkExt, StreamExt};
 
@@ -45,7 +48,7 @@ impl Server {
             ClientMessage::HeartBeat => {}
             ClientMessage::LoginRequest { .. } => {
                 eprintln!("Unexpected LoginRequest message");
-            },
+            }
             ClientMessage::SendChatMessage { recipient, message } => {
                 let tx = {
                     let lock = self.users.lock().unwrap();
@@ -53,7 +56,10 @@ impl Server {
                 };
 
                 if let Some(tx) = tx {
-                    let msg = ServerMessage::RecvChatMessage { from: username.to_string(), message };
+                    let msg = ServerMessage::RecvChatMessage {
+                        from: username.to_string(),
+                        message,
+                    };
                     if let Err(e) = tx.send(msg).await {
                         eprintln!("Failed to post received client message from {username}: {e}");
                     }
@@ -61,7 +67,7 @@ impl Server {
                     // TODO: Send error to user
                     eprintln!("Unable to find user tx: {recipient}");
                 }
-            },
+            }
         }
     }
 }
@@ -91,7 +97,7 @@ pub async fn read_loop(username: String, svr: Arc<Server>, mut framed: ReadFrame
             Ok(Some(Err(e))) => {
                 eprintln!("Read loop error ({username}): {e:?}");
                 break;
-            },
+            }
             Err(_elapsed) => {
                 println!("Timed out: {username}");
                 break;
@@ -110,7 +116,12 @@ pub async fn read_loop(username: String, svr: Arc<Server>, mut framed: ReadFrame
     }
 }
 
-pub fn read_task(username: String, svr: Arc<Server>, framed: ReadFramed, cancellation_token: CancellationToken) -> JoinHandle<()> {
+pub fn read_task(
+    username: String,
+    svr: Arc<Server>,
+    framed: ReadFramed,
+    cancellation_token: CancellationToken,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {}
@@ -119,7 +130,11 @@ pub fn read_task(username: String, svr: Arc<Server>, framed: ReadFramed, cancell
     })
 }
 
-pub async fn write_loop(username: String, write_stream: OwnedWriteHalf, mut rx: mpsc::Receiver<ServerMessage>) {
+pub async fn write_loop(
+    username: String,
+    write_stream: OwnedWriteHalf,
+    mut rx: mpsc::Receiver<ServerMessage>,
+) {
     let mut framed = WriteFramed::new(write_stream, LengthDelimitedCodec::new());
     while let Some(msg) = rx.recv().await {
         println!("Sending message to {username}: {msg:?}");
@@ -129,7 +144,12 @@ pub async fn write_loop(username: String, write_stream: OwnedWriteHalf, mut rx: 
     }
 }
 
-pub fn write_task(username: String, write_stream: OwnedWriteHalf, rx: mpsc::Receiver<ServerMessage>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+pub fn write_task(
+    username: String,
+    write_stream: OwnedWriteHalf,
+    rx: mpsc::Receiver<ServerMessage>,
+    cancellation_token: CancellationToken,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {}
@@ -144,7 +164,7 @@ pub async fn run(addr: SocketAddr) {
         Err(e) => {
             eprintln!("Failed to bind listener: {e}");
             std::process::exit(1);
-        },
+        }
     };
 
     let svr = Arc::new(Server::new());
@@ -191,11 +211,11 @@ pub async fn run(addr: SocketAddr) {
                             return;
                         }
                     }
-                },
+                }
                 Some(Err(e)) => {
                     eprintln!("Failed to recv message frame: {e}");
                     return;
-                },
+                }
                 None => {
                     eprintln!("No initial message received");
                     return;
@@ -203,8 +223,18 @@ pub async fn run(addr: SocketAddr) {
             };
 
             let cancellation_token = CancellationToken::new();
-            let read_handle = read_task(username.clone(), svr.clone(), framed, cancellation_token.clone());
-            let write_handle = write_task(username.clone(), write_stream, rx, cancellation_token.clone());
+            let read_handle = read_task(
+                username.clone(),
+                svr.clone(),
+                framed,
+                cancellation_token.clone(),
+            );
+            let write_handle = write_task(
+                username.clone(),
+                write_stream,
+                rx,
+                cancellation_token.clone(),
+            );
 
             let mut set = tokio::task::JoinSet::new();
             set.spawn(read_handle);

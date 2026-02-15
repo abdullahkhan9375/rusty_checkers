@@ -1,7 +1,3 @@
+pub struct TickTackToe {}
 
-pub struct TickTackToe {
-}
-
-impl crate::Plugin for TickTackToe {
-}
-
+impl crate::Plugin for TickTackToe {}
