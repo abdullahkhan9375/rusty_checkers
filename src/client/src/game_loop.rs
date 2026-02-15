@@ -1,7 +1,7 @@
 use messaging::{ClientMessage, ServerMessage};
 use tokio::sync::mpsc;
 
-pub fn run(tx: mpsc::Sender<ClientMessage>, mut rx: mpsc::Receiver<ServerMessage>) {
+pub fn run(username: &str, tx: mpsc::Sender<ClientMessage>, mut rx: mpsc::Receiver<ServerMessage>) {
     loop {
         println!("\nPlease type a message in <user>@<message> format: ");
         let mut message = String::new();
@@ -11,6 +11,10 @@ pub fn run(tx: mpsc::Sender<ClientMessage>, mut rx: mpsc::Receiver<ServerMessage
             eprint!("invalid message format, please use <recipient>@<message>");
         }
         if let Some((recipient, content)) = message.split_once('@') {
+            if recipient.eq(username) {
+                eprint!("\nSender can't a message to themselves!");
+                continue;
+            }
             if let Err(e) = tx.blocking_send(ClientMessage::SendChatMessage {
                 recipient: recipient.to_string(),
                 message: content.to_string(),

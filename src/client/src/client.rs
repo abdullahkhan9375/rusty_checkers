@@ -1,11 +1,14 @@
-use tokio::net::{tcp::{OwnedReadHalf, OwnedWriteHalf}, TcpStream};
-use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
-use tokio::task::JoinHandle;
-use tokio::sync::mpsc;
-use futures_util::{SinkExt, StreamExt};
-use std::net::SocketAddr;
-use messaging::{ServerMessage, ClientMessage};
 use crate::game_loop;
+use futures_util::{SinkExt, StreamExt};
+use messaging::{ClientMessage, ServerMessage};
+use std::net::SocketAddr;
+use tokio::net::{
+    TcpStream,
+    tcp::{OwnedReadHalf, OwnedWriteHalf},
+};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
 
 const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
@@ -37,7 +40,7 @@ async fn read_loop(mut framed: ReadFramed, tx: ServerMsgSender) {
             Err(e) => {
                 eprintln!("Failed to read message: {e}");
                 break;
-            },
+            }
         };
 
         println!("Received server message: {msg:?}");
@@ -47,7 +50,11 @@ async fn read_loop(mut framed: ReadFramed, tx: ServerMsgSender) {
     }
 }
 
-fn read_task(framed: ReadFramed, tx: ServerMsgSender, cancellation_token: CancellationToken) -> JoinHandle<()> {
+fn read_task(
+    framed: ReadFramed,
+    tx: ServerMsgSender,
+    cancellation_token: CancellationToken,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {},
@@ -63,7 +70,7 @@ async fn write_loop(mut write_framed: WriteFramed, mut rx: mpsc::Receiver<Client
             Err(e) => {
                 eprintln!("Failed to serialise message: {e}");
                 std::process::exit(1);
-            },
+            }
         };
 
         match write_framed.send(serialized.into()).await {
@@ -71,14 +78,18 @@ async fn write_loop(mut write_framed: WriteFramed, mut rx: mpsc::Receiver<Client
             Err(e) => {
                 eprintln!("Failed to send message: {e}");
                 std::process::exit(1);
-            },
+            }
         }
         println!("Sent message: {msg:?}");
     }
     println!("Write loop finished");
 }
 
-fn write_task(write_framed: WriteFramed, rx: mpsc::Receiver<ClientMessage>, cancellation_token: CancellationToken) -> JoinHandle<()> {
+fn write_task(
+    write_framed: WriteFramed,
+    rx: mpsc::Receiver<ClientMessage>,
+    cancellation_token: CancellationToken,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tokio::select! {
             _ = cancellation_token.cancelled() => {},
@@ -111,7 +122,7 @@ pub async fn run(username: &str, addr: SocketAddr) {
         Err(e) => {
             eprintln!("Failed to connect: {e}");
             std::process::exit(1);
-        },
+        }
     };
 
     let (read_stream, write_stream) = stream.into_split();
@@ -120,7 +131,9 @@ pub async fn run(username: &str, addr: SocketAddr) {
     let mut write_framed = WriteFramed::new(write_stream, LengthDelimitedCodec::new());
 
     {
-        let login_msg = ClientMessage::LoginRequest { username: username.to_string() };
+        let login_msg = ClientMessage::LoginRequest {
+            username: username.to_string(),
+        };
 
         // Serialize and send
         let serialized = match login_msg.serialise() {
@@ -128,7 +141,7 @@ pub async fn run(username: &str, addr: SocketAddr) {
             Err(e) => {
                 eprintln!("Failed to serialise message: {e}");
                 std::process::exit(1);
-            },
+            }
         };
 
         match write_framed.send(serialized.clone().into()).await {
@@ -136,22 +149,22 @@ pub async fn run(username: &str, addr: SocketAddr) {
             Err(e) => {
                 eprintln!("Failed to send login message: {e}");
                 std::process::exit(1);
-            },
+            }
         }
     }
 
     match read_msg(&mut read_framed).await {
         Ok(ServerMessage::LoginSuccess) => {
             println!("Recieved login success message");
-        },
+        }
         Ok(m) => {
             eprintln!("Received message, but not login success message: {m:?}");
             std::process::exit(1);
-        },
+        }
         Err(e) => {
             eprintln!("Login success message not received: {e}");
             std::process::exit(1);
-        },
+        }
     }
 
     let (server_tx, server_rx) = mpsc::channel(1024);
@@ -159,13 +172,25 @@ pub async fn run(username: &str, addr: SocketAddr) {
     let cancellation_token = CancellationToken::new();
 
     let mut set = tokio::task::JoinSet::new();
-    set.spawn(read_task(read_framed, server_tx, cancellation_token.clone()));
-    set.spawn(write_task(write_framed, client_rx, cancellation_token.clone()));
-    set.spawn(heartbeat_task(client_tx.clone(), cancellation_token.clone()));
+    set.spawn(read_task(
+        read_framed,
+        server_tx,
+        cancellation_token.clone(),
+    ));
+    set.spawn(write_task(
+        write_framed,
+        client_rx,
+        cancellation_token.clone(),
+    ));
+    set.spawn(heartbeat_task(
+        client_tx.clone(),
+        cancellation_token.clone(),
+    ));
 
     let cancellation_token_clone = cancellation_token.clone();
+    let username_owner = username.to_string();
     tokio::task::spawn_blocking(move || {
-        game_loop::run(client_tx, server_rx);
+        game_loop::run(&username_owner, client_tx, server_rx);
         cancellation_token_clone.cancel();
     });
     set.join_next().await;
@@ -173,4 +198,3 @@ pub async fn run(username: &str, addr: SocketAddr) {
 
     set.join_all().await;
 }
-
