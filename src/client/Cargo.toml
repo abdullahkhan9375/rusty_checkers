@@ -7,4 +7,7 @@ edition = "2024"
 tokio = { version = "*", features = ["full"] }
 tokio-util = { version = "*", features = ["codec"] }
 futures-util = { version = "*", features = ["sink"] }
+ratatui = "*"
+crossterm = "*"
+color-eyre = "*"
 messaging = { path = "../messaging" }

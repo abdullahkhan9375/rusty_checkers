@@ -43,7 +43,7 @@ async fn read_loop(mut framed: ReadFramed, tx: ServerMsgSender) {
             }
         };
 
-        println!("Received server message: {msg:?}");
+        //println!("Received server message: {msg:?}");
         if let Err(e) = tx.send(msg).await {
             eprintln!("Failed to post server message: {e:?}");
         }
@@ -80,7 +80,7 @@ async fn write_loop(mut write_framed: WriteFramed, mut rx: mpsc::Receiver<Client
                 std::process::exit(1);
             }
         }
-        println!("Sent message: {msg:?}");
+        //println!("Sent message: {msg:?}");
     }
     println!("Write loop finished");
 }
@@ -155,7 +155,7 @@ pub async fn run(username: &str, addr: SocketAddr) {
 
     match read_msg(&mut read_framed).await {
         Ok(ServerMessage::LoginSuccess) => {
-            println!("Recieved login success message");
+            //println!("Recieved login success message");
         }
         Ok(m) => {
             eprintln!("Received message, but not login success message: {m:?}");

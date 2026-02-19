@@ -3,6 +3,9 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 mod client;
 mod game_loop;
 
+mod model;
+mod view;
+
 #[tokio::main]
 async fn main() {
     let args = std::env::args().collect::<Vec<_>>();

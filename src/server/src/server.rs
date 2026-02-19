@@ -32,9 +32,18 @@ impl Server {
         }
     }
 
-    pub fn login_user(&self, username: &str, tx: mpsc::Sender<ServerMessage>) -> bool {
+    pub fn login_user(
+        &self,
+        username: &str,
+        tx: mpsc::Sender<ServerMessage>,
+    ) -> Result<(), users::LoginResult> {
         let mut lock = self.users.lock().unwrap();
-        matches!(lock.login_user(username, tx), users::LoginResult::Success)
+        let result = lock.login_user(username, tx);
+        if matches!(result, users::LoginResult::Success) {
+            Ok(())
+        } else {
+            Err(result)
+        }
     }
 
     pub fn logout_user(&self, username: &str) -> bool {
@@ -196,9 +205,9 @@ pub async fn run(addr: SocketAddr) {
 
                     match msg {
                         ClientMessage::LoginRequest { username } => {
-                            if !svr.login_user(&username, tx.clone()) {
+                            if let Err(e) = svr.login_user(&username, tx.clone()) {
                                 // TODO: Send reason to client
-                                eprintln!("Failed to login user {username}");
+                                eprintln!("Failed to login user {username}: {e:?}");
                                 return;
                             }
 
