@@ -3,6 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 mod client;
 mod game_loop;
 
+mod input;
 mod model;
 mod view;
 

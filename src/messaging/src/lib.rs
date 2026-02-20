@@ -1,10 +1,30 @@
+use plugins::PluginType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerMessage {
     LoginSuccess,
-    LoginFailed { reason: String },
-    RecvChatMessage { from: String, message: String },
+    LoginFailed {
+        reason: String,
+    },
+    RecvChatMessage {
+        from: String,
+        message: String,
+    },
+
+    NewGameCreated {
+        game_id: u64,
+        plugin_type: PluginType,
+    },
+    GameEntered {
+        game_id: u64,
+        plugin_type: PluginType,
+        game_state_msg: String,
+    },
+    GameUpdate {
+        game_id: u64,
+        msg: String,
+    },
 }
 
 pub fn deserialise<'de, T: Deserialize<'de>>(frame: &'de [u8]) -> Result<T, String> {
@@ -46,6 +66,10 @@ pub enum ClientMessage {
 
     LoginRequest { username: String },
     SendChatMessage { recipient: String, message: String },
+
+    RequestNewGame(PluginType),
+    RequestEnterGame { game_id: u64 },
+    RequestGameUpdate { game_id: u64, msg: String },
 }
 
 impl ClientMessage {

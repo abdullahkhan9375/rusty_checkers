@@ -65,6 +65,24 @@ impl Users {
         self.logged_in_users.contains_key(username)
     }
 
+    pub async fn broadcast_msg(
+        msg: ServerMessage,
+        channels: &[(String, mpsc::Sender<ServerMessage>)],
+    ) {
+        for (username, tx) in channels {
+            if let Err(e) = tx.send(msg.clone()).await {
+                eprintln!("Failed to post broadcast msg to {username}: {msg:?}. {e:?}");
+            }
+        }
+    }
+
+    pub fn get_all_users_tx(&self) -> Vec<(String, mpsc::Sender<ServerMessage>)> {
+        self.logged_in_users
+            .iter()
+            .map(|(username, tx)| (username.clone(), tx.clone()))
+            .collect()
+    }
+
     pub fn get_user_tx(&self, username: &str) -> Option<mpsc::Sender<ServerMessage>> {
         self.logged_in_users.get(username).cloned()
     }

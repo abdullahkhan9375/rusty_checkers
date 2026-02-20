@@ -157,6 +157,7 @@ dependencies = [
  "crossterm",
  "futures-util",
  "messaging",
+ "plugins",
  "ratatui",
  "tokio",
  "tokio-util",
@@ -759,6 +760,7 @@ dependencies = [
 name = "messaging"
 version = "0.1.0"
 dependencies = [
+ "plugins",
  "serde",
  "serde_json",
 ]
@@ -1011,6 +1013,11 @@ checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 [[package]]
 name = "plugins"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "strum",
+]
 
 [[package]]
 name = "portable-atomic"
@@ -1297,6 +1304,7 @@ version = "0.1.0"
 dependencies = [
  "futures-util",
  "messaging",
+ "plugins",
  "tokio",
  "tokio-util",
 ]

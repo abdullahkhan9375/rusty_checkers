@@ -11,3 +11,4 @@ ratatui = "*"
 crossterm = "*"
 color-eyre = "*"
 messaging = { path = "../messaging" }
+plugins = { path = "../plugins" }

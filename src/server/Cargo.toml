@@ -7,4 +7,5 @@ edition = "2024"
 tokio = { version = "*", features = ["full"] }
 tokio-util = { version = "*", features = ["codec"] }
 futures-util = { version = "*", features = ["sink"] }
+plugins = { path = "../plugins" }
 messaging = { path = "../messaging" }
