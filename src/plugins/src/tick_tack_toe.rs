@@ -1,7 +1,7 @@
 use crate::EvaluateResult;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Cell {
     Nought,
     Cross,
@@ -91,6 +91,13 @@ impl ClientState {
             content: self.player_cell,
         }
         .serialize()
+    }
+
+    pub fn can_place_at(&self, cell_idx: usize) -> bool {
+        self.game_state
+            .cells
+            .get(cell_idx)
+            .is_some_and(|cell| *cell == Cell::Empty)
     }
 }
 

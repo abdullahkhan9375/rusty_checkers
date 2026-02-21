@@ -1,6 +1,5 @@
 use crate::input::{GameInput, Input, Mode};
-use crate::model::{self, ChatMessage};
-use color_eyre::owo_colors::OwoColorize;
+use crate::model::ChatMessage;
 use plugins::{ClientState, PluginType};
 use ratatui::style::Stylize;
 use ratatui::{
@@ -60,6 +59,7 @@ fn render_chat_history(frame: &mut Frame, area: Rect, chat_history: &[ChatMessag
 
 struct TickTackToeGrid {
     selected_idx: usize,
+    can_place_at_idx: bool,
     plugins: [plugins::tick_tack_toe::Cell; plugins::tick_tack_toe::CELL_COUNT],
 }
 
@@ -82,16 +82,24 @@ impl Widget for TickTackToeGrid {
             .flat_map(|row| row.layout_vec(&horizontal));
 
         for (i, (rect, cell)) in cells.zip(self.plugins.iter()).enumerate() {
+            use plugins::tick_tack_toe::Cell;
+
             let c = match cell {
-                plugins::tick_tack_toe::Cell::Cross => "X",
-                plugins::tick_tack_toe::Cell::Nought => "O",
-                plugins::tick_tack_toe::Cell::Empty => " ",
+                Cell::Cross => "X",
+                Cell::Nought => "O",
+                Cell::Empty => " ",
             };
 
             let mut p = Paragraph::new(c.to_string()).block(Block::bordered());
 
             if i == self.selected_idx && (secs % 2) == 0 {
-                p = p.bg(ratatui::style::Color::White);
+                use ratatui::style::Color;
+                let colour = if self.can_place_at_idx {
+                    Color::White
+                } else {
+                    Color::Red
+                };
+                p = p.bg(colour);
             }
 
             p.render(rect, buf);
@@ -122,6 +130,7 @@ fn render_game(frame: &mut Frame, area: Rect, game_input: &GameInput, game: &Cli
             frame.render_widget(
                 TickTackToeGrid {
                     plugins: ttt.get_cells(),
+                    can_place_at_idx: ttt.can_place_at(selected_idx),
                     selected_idx,
                 },
                 game_area,
