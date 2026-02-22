@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 tokio = { version = "*", features = ["full"] }
 tokio-util = { version = "*", features = ["codec"] }
+tokio-tungstenite = "*"
 futures-util = { version = "*", features = ["sink"] }
 plugins = { path = "../plugins" }
 messaging = { path = "../messaging" }
+async-trait = "*"

@@ -1,34 +1,23 @@
 use crate::game_states::GameStates;
 use crate::users::{self, Users};
 use messaging::{ClientMessage, ServerMessage};
-use std::sync::Mutex;
-
-use tokio::net::{
-    TcpListener,
-    tcp::{OwnedReadHalf, OwnedWriteHalf},
-};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio_util::{codec::LengthDelimitedCodec, sync::CancellationToken};
-
-use futures_util::{SinkExt, StreamExt};
-
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::Mutex;
+use tokio::sync::mpsc;
 
-const TIMEOUT: Duration = Duration::from_secs(30);
+pub struct ServerConfig {
+    pub tcp_addr: SocketAddr,
+    pub websocket_addr: SocketAddr,
+}
 
-type ReadFramed = tokio_util::codec::Framed<OwnedReadHalf, LengthDelimitedCodec>;
-type WriteFramed = tokio_util::codec::Framed<OwnedWriteHalf, LengthDelimitedCodec>;
-
-pub struct Server {
+pub(crate) struct Server {
     users: Mutex<Users>,
     game_states: Mutex<GameStates>,
 }
 
 impl Server {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             users: Mutex::new(Users::new()),
             game_states: Mutex::new(GameStates::new()),
@@ -91,23 +80,22 @@ impl Server {
                     })
                 };
 
-                if let Some((plugin_type, state_msg)) = state_msg {
-                    // TODO: Send failed message back to client
-                    if let Ok(state_msg) = state_msg {
-                        let tx = {
-                            let lock = self.users.lock().unwrap();
-                            lock.get_user_tx(username).clone()
-                        };
+                if let Some((plugin_type, state_msg)) = state_msg
+                    && let Ok(state_msg) = state_msg
+                {
+                    let tx = {
+                        let lock = self.users.lock().unwrap();
+                        lock.get_user_tx(username).clone()
+                    };
 
-                        if let Some(tx) = tx {
-                            let _ = tx
-                                .send(ServerMessage::GameEntered {
-                                    game_id,
-                                    plugin_type,
-                                    game_state_msg: state_msg,
-                                })
-                                .await;
-                        }
+                    if let Some(tx) = tx {
+                        let _ = tx
+                            .send(ServerMessage::GameEntered {
+                                game_id,
+                                plugin_type,
+                                game_state_msg: state_msg,
+                            })
+                            .await;
                     }
                 }
             }
@@ -166,184 +154,11 @@ impl Server {
     }
 }
 
-async fn write_msg(framed: &mut WriteFramed, msg: &ServerMessage) -> Result<(), String> {
-    let serialized = match msg.serialise() {
-        Ok(s) => s,
-        Err(e) => return Err(format!("Failed to serialise message: {e}")),
-    };
-
-    if let Err(e) = framed.send(serialized.into()).await {
-        return Err(format!("Failed to send message: {e}"));
-    }
-
-    Ok(())
-}
-
-pub async fn read_loop(username: String, svr: Arc<Server>, mut framed: ReadFramed) {
-    loop {
-        let result = tokio::time::timeout(TIMEOUT, framed.next()).await;
-        let bytes = match result {
-            Ok(Some(Ok(b))) => b,
-            Ok(None) => {
-                eprintln!("No message received: {username}");
-                break;
-            }
-            Ok(Some(Err(e))) => {
-                eprintln!("Read loop error ({username}): {e:?}");
-                break;
-            }
-            Err(_elapsed) => {
-                println!("Timed out: {username}");
-                break;
-            }
-        };
-
-        let msg = match ClientMessage::deserialise(bytes.as_ref()) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("Failed to decode msg: {e}");
-                continue;
-            }
-        };
-
-        svr.recv_msg(&username, msg).await;
-    }
-}
-
-pub fn read_task(
-    username: String,
-    svr: Arc<Server>,
-    framed: ReadFramed,
-    cancellation_token: CancellationToken,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = cancellation_token.cancelled() => {}
-            _ = read_loop(username, svr, framed) => {},
-        }
-    })
-}
-
-pub async fn write_loop(
-    username: String,
-    write_stream: OwnedWriteHalf,
-    mut rx: mpsc::Receiver<ServerMessage>,
-) {
-    let mut framed = WriteFramed::new(write_stream, LengthDelimitedCodec::new());
-    while let Some(msg) = rx.recv().await {
-        println!("Sending message to {username}: {msg:?}");
-        if let Err(e) = write_msg(&mut framed, &msg).await {
-            eprintln!("{e}");
-        }
-    }
-}
-
-pub fn write_task(
-    username: String,
-    write_stream: OwnedWriteHalf,
-    rx: mpsc::Receiver<ServerMessage>,
-    cancellation_token: CancellationToken,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = cancellation_token.cancelled() => {}
-            _ = write_loop(username, write_stream, rx) => {},
-        }
-    })
-}
-
-pub async fn run(addr: SocketAddr) {
-    let listener = match TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("Failed to bind listener: {e}");
-            std::process::exit(1);
-        }
-    };
-
+pub async fn run(config: ServerConfig) {
     let svr = Arc::new(Server::new());
 
-    loop {
-        let (stream, _addr) = match listener.accept().await {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to accept: {e}");
-                std::process::exit(1);
-            }
-        };
+    let websocket_handle = crate::websocket::run(config.websocket_addr, svr.clone());
+    let tcp_handle = crate::tcp::run(config.tcp_addr, svr.clone());
 
-        let (read_stream, write_stream) = stream.into_split();
-        let svr = svr.clone();
-        tokio::spawn(async move {
-            let mut framed = ReadFramed::new(read_stream, LengthDelimitedCodec::new());
-
-            let (tx, rx) = mpsc::channel::<ServerMessage>(1024);
-            let username = match framed.next().await {
-                Some(Ok(bytes)) => {
-                    let msg = match ClientMessage::deserialise(bytes.as_ref()) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            eprintln!("Failed to decode initial msg: {e}");
-                            return;
-                        }
-                    };
-
-                    match msg {
-                        ClientMessage::LoginRequest { username } => {
-                            if let Err(e) = svr.login_user(&username, tx.clone()) {
-                                // TODO: Send reason to client
-                                eprintln!("Failed to login user {username}: {e:?}");
-                                return;
-                            }
-
-                            println!("User {username} logged in");
-                            username
-                        }
-                        _ => {
-                            // TODO: Send reason to client
-                            eprintln!("unexpected initial message: {msg:?}");
-                            return;
-                        }
-                    }
-                }
-                Some(Err(e)) => {
-                    eprintln!("Failed to recv message frame: {e}");
-                    return;
-                }
-                None => {
-                    eprintln!("No initial message received");
-                    return;
-                }
-            };
-
-            let cancellation_token = CancellationToken::new();
-            let read_handle = read_task(
-                username.clone(),
-                svr.clone(),
-                framed,
-                cancellation_token.clone(),
-            );
-            let write_handle = write_task(
-                username.clone(),
-                write_stream,
-                rx,
-                cancellation_token.clone(),
-            );
-
-            let mut set = tokio::task::JoinSet::new();
-            set.spawn(read_handle);
-            set.spawn(write_handle);
-
-            let _ = tx.send(ServerMessage::LoginSuccess).await;
-
-            set.join_next().await;
-
-            cancellation_token.cancel();
-
-            set.join_all().await;
-
-            svr.logout_user(&username);
-            println!("User {username} logged out");
-        });
-    }
+    tokio::join!(websocket_handle, tcp_handle);
 }

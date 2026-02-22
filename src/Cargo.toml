@@ -6,5 +6,5 @@ members = [
     "server",
     "client",
     "messaging",
-    "plugins",
+    "plugins", "web-client",
 ]

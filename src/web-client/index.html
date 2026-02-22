@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>hello-wasm example</title>
+  </head>
+  <body>
+    <script>
+      function onRecvChatMessage(from, msg) {
+      	console.log(from, msg);
+      }
+    </script>
+    <script type="module">
+       // Connect to the Rust server
+       const socket = new WebSocket('ws://192.168.20.108:11000');
+       
+       // Connection opened
+       socket.onopen = (event) => {
+           console.log('Connected to Rust server!');
+           socket.send('Hello from the Browser!');
+           socket.send('Hello from the Browser 222!');
+           socket.send('Hello from the Browser 333!');
+       };
+       
+       // Listen for messages from Rust
+       socket.onmessage = (event) => {
+           console.log('Message from server:', event.data);
+       };
+       
+       // Handle errors or closing
+       socket.onclose = () => console.log('Server connection closed');
+       socket.onerror = (error) => console.error('WebSocket Error:', error);
+
+      //import init, { recv_server_msg } from "./pkg/web_client.js";
+
+      init().then(() => {
+	//recv_server_msg('{"RecvChatMessage":{"from":"Ben","message":"Hidy ho"}}');
+      });
+    </script>
+  </body>
+</html>

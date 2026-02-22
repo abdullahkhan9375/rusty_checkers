@@ -1,12 +1,20 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
+mod connection;
 mod game_states;
 mod server;
+mod tcp;
 mod users;
+mod websocket;
 
 #[tokio::main]
 async fn main() {
     let ip = IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0));
-    let addr = SocketAddr::new(ip, 10000);
-    server::run(addr).await;
+
+    let c = server::ServerConfig {
+        tcp_addr: SocketAddr::new(ip, 10000),
+        websocket_addr: SocketAddr::new(ip, 11000),
+    };
+
+    server::run(c).await;
 }

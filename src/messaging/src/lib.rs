@@ -81,3 +81,24 @@ impl ClientMessage {
         serialise(self)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn xxxx() {
+        println!(
+            "{}",
+            String::from_utf8(
+                ServerMessage::RecvChatMessage {
+                    from: "Ben".to_string(),
+                    message: "Hidy ho".to_string(),
+                }
+                .serialise()
+                .unwrap()
+            )
+            .unwrap()
+        );
+    }
+}
