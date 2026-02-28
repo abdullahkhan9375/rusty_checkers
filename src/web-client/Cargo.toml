@@ -8,5 +8,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "*"
+js-sys = "*"
 messaging = { path = "../messaging" }
 plugins = { path = "../plugins" }

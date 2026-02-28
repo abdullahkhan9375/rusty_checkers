@@ -41,13 +41,12 @@ pub fn deserialise<'de, T: Deserialize<'de>>(frame: &'de [u8]) -> Result<T, Stri
     Ok(msg)
 }
 
-pub fn serialise<T: Serialize>(msg: &T) -> Result<Vec<u8>, String> {
-    let s = match serde_json::to_string(msg) {
-        Ok(s) => s,
-        Err(e) => return Err(e.to_string()),
-    };
+pub fn serialise_string<T: Serialize>(msg: &T) -> Result<String, String> {
+    serde_json::to_string(msg).map_err(|e| e.to_string())
+}
 
-    Ok(s.into_bytes())
+pub fn serialise<T: Serialize>(msg: &T) -> Result<Vec<u8>, String> {
+    Ok(serialise_string(msg)?.into_bytes())
 }
 
 impl ServerMessage {
@@ -79,6 +78,10 @@ impl ClientMessage {
 
     pub fn serialise(&self) -> Result<Vec<u8>, String> {
         serialise(self)
+    }
+
+    pub fn serialise_string(&self) -> Result<String, String> {
+        serialise_string(self)
     }
 }
 

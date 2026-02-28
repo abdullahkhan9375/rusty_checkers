@@ -11,3 +11,4 @@ futures-util = { version = "*", features = ["sink"] }
 plugins = { path = "../plugins" }
 messaging = { path = "../messaging" }
 async-trait = "*"
+axum = "*"

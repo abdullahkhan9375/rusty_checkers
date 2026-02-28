@@ -6,6 +6,7 @@ mod server;
 mod tcp;
 mod users;
 mod websocket;
+mod http;
 
 #[tokio::main]
 async fn main() {
@@ -16,5 +17,8 @@ async fn main() {
         websocket_addr: SocketAddr::new(ip, 11000),
     };
 
-    server::run(c).await;
+    tokio::join!(
+        server::run(c),
+        http::run(SocketAddr::new(ip, 12000)),
+    );
 }
