@@ -144,6 +144,7 @@ fn main_view(input: &Input, frame: &mut Frame) {
 
     let vertical = Layout::vertical([
         Constraint::Length(1),
+        Constraint::Length(1),
         Constraint::Min(10),
         Constraint::Min(10),
         Constraint::Max(5),
@@ -151,6 +152,7 @@ fn main_view(input: &Input, frame: &mut Frame) {
     ]);
     let [
         player_area,
+        controls_area,
         game_area,
         messages_area,
         input_area,
@@ -160,6 +162,13 @@ fn main_view(input: &Input, frame: &mut Frame) {
     frame.render_widget(
         ratatui::widgets::Paragraph::new(format!("User: {}", input.model.username)),
         player_area,
+    );
+
+    frame.render_widget(
+        ratatui::widgets::Paragraph::new(
+            "quit: q, chat mode: c, current game: p, list games: l, new game: n",
+        ),
+        controls_area,
     );
 
     frame.render_widget(
