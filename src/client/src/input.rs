@@ -188,13 +188,19 @@ impl Input {
         let Some((game_id, game_state)) = &self.model.current_game else {
             return KeyResult::None;
         };
-
         match &mut self.game_input_state {
             GameInput::None => KeyResult::None,
             GameInput::TickTackToe { selected_cell } => {
                 use plugins::tick_tack_toe::CELL_COUNT;
                 use plugins::tick_tack_toe::GRID_WIDTH;
-
+                let plugins::ClientState::TickTackToe(ttt) = game_state else {
+                    return KeyResult::None;
+                };
+                if ttt.last_turn() == Some(self.model.username.as_str()) {
+                    eprintln!("it's not your turn!");
+                    // print something.
+                    return KeyResult::None;
+                }
                 match key {
                     KeyCode::Up => {
                         if *selected_cell < GRID_WIDTH {
@@ -221,12 +227,10 @@ impl Input {
                         *selected_cell = row_base + new_column;
                     }
                     KeyCode::Enter => {
-                        if let plugins::ClientState::TickTackToe(ttt) = game_state {
-                            return KeyResult::SendGameMsg {
-                                game_id: *game_id,
-                                msg: ttt.request_move_msg(*selected_cell),
-                            };
-                        }
+                        return KeyResult::SendGameMsg {
+                            game_id: *game_id,
+                            msg: ttt.request_move_msg(*selected_cell, &self.model.username),
+                        };
                     }
                     _ => {}
                 }

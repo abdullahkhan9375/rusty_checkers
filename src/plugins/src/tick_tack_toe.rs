@@ -20,6 +20,7 @@ enum Message {
     FillCell {
         idx: usize,
         content: Cell,
+        player: String,
     },
 }
 
@@ -38,12 +39,14 @@ impl Message {
 
 struct GameState {
     cells: [Cell; CELL_COUNT],
+    last_turn: Option<String>,
 }
 
 impl GameState {
     fn new() -> Self {
         Self {
             cells: [Cell::Empty; CELL_COUNT],
+            last_turn: None,
         }
     }
 }
@@ -65,6 +68,10 @@ impl ClientState {
         self.player_cell
     }
 
+    pub fn last_turn(&self) -> Option<&str> {
+        self.game_state.last_turn.as_deref()
+    }
+
     pub fn recv_msg(&mut self, msg_str: &str) -> Result<(), String> {
         let msg = Message::deserialize(msg_str)?;
         match msg {
@@ -72,9 +79,14 @@ impl ClientState {
                 self.player_cell = player_cell;
                 self.game_state.cells = cells;
             }
-            Message::FillCell { idx, content } => {
+            Message::FillCell {
+                idx,
+                content,
+                player,
+            } => {
                 if idx < CELL_COUNT {
                     self.game_state.cells[idx] = content;
+                    self.game_state.last_turn = Some(player);
                 }
             }
         }
@@ -85,10 +97,11 @@ impl ClientState {
         self.game_state.cells
     }
 
-    pub fn request_move_msg(&self, cell_idx: usize) -> String {
+    pub fn request_move_msg(&self, cell_idx: usize, username: &str) -> String {
         Message::FillCell {
             idx: cell_idx,
             content: self.player_cell,
+            player: username.to_string(),
         }
         .serialize()
     }
@@ -135,9 +148,14 @@ impl crate::ServerPlugin for Server {
     fn recv_msg(&mut self, msg_str: &str) -> Result<String, String> {
         let msg = Message::deserialize(msg_str)?;
         match msg {
-            Message::FillCell { idx, content } => {
+            Message::FillCell {
+                idx,
+                content,
+                player,
+            } => {
                 if idx < CELL_COUNT {
                     self.game_state.cells[idx] = content;
+                    self.game_state.last_turn = Some(player);
                 }
             }
             _ => {}
